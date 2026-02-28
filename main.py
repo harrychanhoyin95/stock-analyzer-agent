@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 import httpx
 from dotenv import load_dotenv
@@ -70,16 +71,34 @@ agent = create_agent(
     system_prompt=get_system_prompt(),
 )
 
+def run_agent(history):
+    final_state = None
+    t = time.perf_counter()
+    for chunk in agent.stream(
+        {"messages": history},
+        config={"callbacks": [langfuse_handler]},
+        stream_mode="updates",
+    ):
+        elapsed = time.perf_counter() - t
+        node_name = list(chunk.keys())[0]
+        node_data = list(chunk.values())[0]
+
+        if node_name == "tools":
+            for msg in node_data["messages"]:
+                print(f"[node: tools] → {msg.name} ({elapsed:.2f}s)")
+        else:
+            print(f"[node: {node_name}] ({elapsed:.2f}s)")
+
+        final_state = chunk
+        t = time.perf_counter()
+
+    return next(iter(final_state.values()))["messages"]
+
+
 if __name__ == "__main__":
     print("Running daily NASDAQ analysis...\n")
 
-    history = [("human", "Run the daily analysis.")]
-
-    response = agent.invoke(
-        {"messages": history},
-        config={"callbacks": [langfuse_handler]},
-    )
-    history = response["messages"]
+    history = run_agent([("human", "Run the daily analysis.")])
     print(f"\n{history[-1].content}\n")
 
     try:
@@ -90,9 +109,5 @@ if __name__ == "__main__":
 
     if email:
         history.append(("human", email))
-        response = agent.invoke(
-            {"messages": history},
-            config={"callbacks": [langfuse_handler]},
-        )
-        history = response["messages"]
+        history = run_agent(history)
         print(f"\n{history[-1].content}\n")

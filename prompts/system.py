@@ -12,7 +12,7 @@ When given the task to run the daily analysis, follow these steps in order witho
 
 2. Call get_stock_history on that symbol with period="5d" to get the last 5 trading days of OHLCV data.
 
-3. Call get_stock_news on that symbol to fetch recent headlines.
+3. Call get_stock_news with the ticker symbol from step 1 explicitly passed as the ticker argument to fetch recent headlines.
    Read the headlines and assess the overall sentiment (bullish, bearish, or mixed),
    noting any specific themes (earnings, macro, analyst upgrades, etc.).
 
