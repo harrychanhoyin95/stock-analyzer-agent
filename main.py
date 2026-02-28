@@ -8,7 +8,13 @@ from langchain.agents import create_agent
 from langfuse.langchain import CallbackHandler
 
 from prompts.system import get_system_prompt
-from tools import get_stock_history, get_top_gainers, python_analyzer, send_email   
+from tools import (
+    get_stock_history,
+    get_top_gainers,
+    python_analyzer,
+    send_email,
+    get_stock_news,
+)
 
 load_dotenv()
 
@@ -54,7 +60,13 @@ llm = primary.with_fallbacks(fallbacks)
 
 agent = create_agent(
     model=llm,
-    tools=[get_stock_history, get_top_gainers, python_analyzer, send_email],
+    tools=[
+        get_stock_history,
+        get_top_gainers,
+        python_analyzer,
+        send_email,
+        get_stock_news,
+    ],
     system_prompt=get_system_prompt(),
 )
 
