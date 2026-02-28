@@ -37,7 +37,7 @@ print(f"✓ LangFuse running at {LANGFUSE_HOST}\n")
 langfuse_handler = CallbackHandler()
 
 llm = ChatOpenAI(
-    model=os.getenv("LLM_MODEL", "openrouter/google/gemini-2.0-flash-001"),
+    model=os.getenv("LLM_MODEL", "stepfun/step-3.5-flash:free"),
     openai_api_key=os.getenv("OPENROUTER_API_KEY"),
     openai_api_base="https://openrouter.ai/api/v1",
 )
