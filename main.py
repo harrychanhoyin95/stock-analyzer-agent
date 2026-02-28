@@ -1,6 +1,8 @@
+import argparse
 import os
 import sys
 import time
+from dataclasses import dataclass, field
 
 import httpx
 from dotenv import load_dotenv
@@ -73,7 +75,32 @@ def _make_llm(model: str, key: str) -> ChatOpenAI:
     )
 
 
-def _make_agent(model: str, key: str):
+_VALID_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y"}
+
+
+@dataclass
+class Config:
+    period: str = "5d"
+    recipients: list[str] = field(default_factory=lambda: ["harrychanhoyin95@gmail.com"])
+
+
+def _parse_config() -> Config:
+    parser = argparse.ArgumentParser(description="NASDAQ stock analyzer agent")
+    parser.add_argument(
+        "--period",
+        type=str,
+        default="5d",
+        choices=sorted(_VALID_PERIODS),
+        help="History period (default: 5d). One of: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y",
+    )
+    parser.add_argument("--email", type=str, default=None, help="Comma-separated recipient emails (default: harrychanhoyin95@gmail.com)")
+    args = parser.parse_args()
+
+    recipients = args.email.split(",") if args.email else ["harrychanhoyin95@gmail.com"]
+    return Config(period=args.period, recipients=recipients)
+
+
+def _make_agent(model: str, key: str, config: Config):
     return create_agent(
         model=_make_llm(model, key),
         tools=[
@@ -83,16 +110,16 @@ def _make_agent(model: str, key: str):
             send_email,
             get_stock_news,
         ],
-        system_prompt=get_system_prompt(),
+        system_prompt=get_system_prompt(period=config.period, recipients=config.recipients),
     )
 
 
-def run_agent(history):
+def run_agent(history, config: Config):
     global _current_idx
 
     while _current_idx < len(_CANDIDATES):
         model, key = _CANDIDATES[_current_idx]
-        agent = _make_agent(model, key)
+        agent = _make_agent(model, key, config)
 
         try:
             final_state = None
@@ -129,18 +156,10 @@ def run_agent(history):
 
 
 if __name__ == "__main__":
-    print("Running daily NASDAQ analysis...\n")
+    config = _parse_config()
 
-    history = run_agent([("human", "Run the daily analysis.")])
+    print(f"Running {config.period} NASDAQ analysis...\n")
+    print(f"Recipients: {', '.join(config.recipients)}\n")
+
+    history = run_agent([("human", f"Run the {config.period} analysis.")], config)
     print(f"\n{history[-1].content}\n")
-
-    try:
-        email = input("Your email: ").strip()
-    except KeyboardInterrupt:
-        print("\nBye!")
-        raise SystemExit(0)
-
-    if email:
-        history.append(("human", email))
-        history = run_agent(history)
-        print(f"\n{history[-1].content}\n")
