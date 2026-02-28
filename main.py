@@ -7,13 +7,12 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langfuse.langchain import CallbackHandler
 
-from tools import get_stock_history, get_top_gainers, python_analyzer
+from prompts.system import get_system_prompt
+from tools import get_stock_history, get_top_gainers, python_analyzer, send_email   
 
 load_dotenv()
 
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
-
-SYSTEM_PROMPT = "You are a helpful stock analysis assistant."
 
 def check_langfuse_health():
     """Check if LangFuse is running before starting the app."""
@@ -36,26 +35,46 @@ print(f"✓ LangFuse running at {LANGFUSE_HOST}\n")
 
 langfuse_handler = CallbackHandler()
 
-llm = ChatOpenAI(
-    model=os.getenv("LLM_MODEL", "stepfun/step-3.5-flash:free"),
-    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-    openai_api_base="https://openrouter.ai/api/v1",
-)
+FALLBACK_MODELS = [
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "arcee-ai/trinity-large-preview:free",
+    "arcee-ai/trinity-mini:free",
+    "stepfun/step-3.5-flash:free",
+]
+
+def make_llm(model: str) -> ChatOpenAI:
+    return ChatOpenAI(
+        model=model,
+        openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+        openai_api_base="https://openrouter.ai/api/v1",
+    )
+    
+primary, *fallbacks = [make_llm(m) for m in FALLBACK_MODELS]
+llm = primary.with_fallbacks(fallbacks)
 
 agent = create_agent(
     model=llm,
-    tools=[get_stock_history, get_top_gainers, python_analyzer],
-    system_prompt=SYSTEM_PROMPT,
+    tools=[get_stock_history, get_top_gainers, python_analyzer, send_email],
+    system_prompt=get_system_prompt(),
 )
 
 if __name__ == "__main__":
     print("Chat ready. Type 'exit' to quit.\n")
+    history = []
     while True:
-        user_input = input("You: ")
+        try:
+            user_input = input("You: ")
+        except KeyboardInterrupt:
+            print("\nBye!")
+            break
         if user_input.lower() in ["exit", "quit", "q"]:
             break
+        
+        history.append(("human", user_input))
+
         response = agent.invoke(
-            {"messages": [("human", user_input)]},
-            config={"callbacks": [langfuse_handler]},
-        )
-        print(f"\nAssistant: {response['messages'][-1].content}\n")
+                {"messages": history},
+                config={"callbacks": [langfuse_handler]},
+            )
+        history = response["messages"]
+        print(f"\nAssistant: {history[-1].content}\n")

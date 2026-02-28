@@ -7,7 +7,7 @@ from langchain_core.tools import tool
 @tool
 def get_stock_history(
     symbol: str,
-    period: Literal["1d", "5d", "1m", "1y"] = "5d",
+    period: Literal["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y"] = "5d",
 ) -> dict:
     """Fetch historical OHLCV data for a stock symbol.
 
