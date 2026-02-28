@@ -4,13 +4,16 @@ import sys
 import httpx
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langchain.agents import create_agent
 from langfuse.langchain import CallbackHandler
+
+from tools import get_stock_history, get_top_gainers, python_analyzer
 
 load_dotenv()
 
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
+
+SYSTEM_PROMPT = "You are a helpful stock analysis assistant."
 
 def check_langfuse_health():
     """Check if LangFuse is running before starting the app."""
@@ -22,7 +25,6 @@ def check_langfuse_health():
         pass
     return False
 
-
 if not check_langfuse_health():
     print(f"❌ LangFuse is not running at {LANGFUSE_HOST}")
     print("\nStart it with:")
@@ -32,11 +34,7 @@ if not check_langfuse_health():
 
 print(f"✓ LangFuse running at {LANGFUSE_HOST}\n")
 
-langfuse_handler = CallbackHandler(
-    public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
-    secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
-    host=LANGFUSE_HOST,
-)
+langfuse_handler = CallbackHandler()
 
 llm = ChatOpenAI(
     model=os.getenv("LLM_MODEL", "openrouter/google/gemini-2.0-flash-001"),
@@ -44,12 +42,11 @@ llm = ChatOpenAI(
     openai_api_base="https://openrouter.ai/api/v1",
 )
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant. Be concise."),
-    ("user", "{input}")
-])
-
-chain = prompt | llm | StrOutputParser()
+agent = create_agent(
+    model=llm,
+    tools=[get_stock_history, get_top_gainers, python_analyzer],
+    system_prompt=SYSTEM_PROMPT,
+)
 
 if __name__ == "__main__":
     print("Chat ready. Type 'exit' to quit.\n")
@@ -57,8 +54,8 @@ if __name__ == "__main__":
         user_input = input("You: ")
         if user_input.lower() in ["exit", "quit", "q"]:
             break
-        response = chain.invoke(
-            {"input": user_input},
-            config={"callbacks": [langfuse_handler]}
+        response = agent.invoke(
+            {"messages": [("human", user_input)]},
+            config={"callbacks": [langfuse_handler]},
         )
-        print(f"\nAssistant: {response}\n")
+        print(f"\nAssistant: {response['messages'][-1].content}\n")
