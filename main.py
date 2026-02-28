@@ -6,6 +6,7 @@ import httpx
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
+from openai import RateLimitError
 from langfuse.langchain import CallbackHandler
 
 from prompts.system import get_system_prompt
@@ -49,14 +50,24 @@ FALLBACK_MODELS = [
     "stepfun/step-3.5-flash:free",
 ]
 
-def make_llm(model: str) -> ChatOpenAI:
+def make_llm(model: str, key: str) -> ChatOpenAI:
     return ChatOpenAI(
         model=model,
-        openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+        openai_api_key=key,
         openai_api_base="https://openrouter.ai/api/v1",
     )
-    
-primary, *fallbacks = [make_llm(m) for m in FALLBACK_MODELS]
+
+def make_llm_with_key_fallback(model: str) -> ChatOpenAI:
+    keys = [k for k in [
+        os.getenv("OPENROUTER_API_KEY"),
+        os.getenv("OPENROUTER_API_KEY_2"),
+        os.getenv("OPENROUTER_API_KEY_3"),
+    ] if k]
+    llms = [make_llm(model, key) for key in keys]
+    primary, *fallbacks = llms
+    return primary.with_fallbacks(fallbacks, exceptions_to_handle=(RateLimitError,))
+
+primary, *fallbacks = [make_llm_with_key_fallback(m) for m in FALLBACK_MODELS]
 llm = primary.with_fallbacks(fallbacks)
 
 agent = create_agent(
