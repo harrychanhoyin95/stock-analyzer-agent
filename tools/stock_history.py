@@ -3,6 +3,11 @@ from typing import Literal
 import yfinance as yf
 from langchain_core.tools import tool
 
+from ._playwright_scraper import scrape_stock_history, use_scraper
+from pydantic import ValidationError
+
+from .validate import StockHistoryResult
+
 
 @tool
 def get_stock_history(
@@ -13,21 +18,25 @@ def get_stock_history(
 
     Use this tool when you need historical price data for a stock.
     Returns Open, High, Low, Close, and Volume for each day.
+    Falls back to Playwright scraping (Yahoo Finance) if yfinance fails or USE_SCRAPER=1.
 
     Args:
         symbol: Stock ticker symbol (e.g., 'AAPL', 'GOOGL', 'TSLA')
-        period: Time period to fetch - '1d', '5d' (default), '1m', or '1y'
+        period: Time period to fetch - '1d', '5d' (default), '1mo', or '1y'
 
     Returns:
         Dictionary with symbol, period, and OHLCV data indexed by date.
         Returns {'error': message} if the symbol is invalid or data unavailable.
     """
+    if use_scraper():
+        return scrape_stock_history(symbol, period)
+
     try:
         ticker = yf.Ticker(symbol.upper())
         df = ticker.history(period=period)
 
         if df.empty:
-            return {"error": f"No data found for symbol: {symbol}"}
+            return scrape_stock_history(symbol, period)
 
         data = {}
         for date, row in df.iterrows():
@@ -40,7 +49,13 @@ def get_stock_history(
                 "volume": int(row["Volume"]),
             }
 
-        return {"symbol": symbol.upper(), "period": period, "data": data}
+        result = {"symbol": symbol.upper(), "period": period, "data": data}
+        try:
+            StockHistoryResult(**result)
+            return result
+        except ValidationError as e:
+            messages = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
+            return {"error": "validation failed: " + ", ".join(messages)}
 
-    except Exception as e:
-        return {"error": f"Failed to fetch data: {str(e)}"}
+    except Exception:
+        return scrape_stock_history(symbol, period)

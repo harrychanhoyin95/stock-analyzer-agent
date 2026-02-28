@@ -43,67 +43,89 @@ print(f"✓ LangFuse running at {LANGFUSE_HOST}\n")
 
 langfuse_handler = CallbackHandler()
 
-FALLBACK_MODELS = [
+_MODELS = [
     "nvidia/nemotron-3-nano-30b-a3b:free",
     "arcee-ai/trinity-large-preview:free",
     "arcee-ai/trinity-mini:free",
     "stepfun/step-3.5-flash:free",
 ]
 
-def make_llm(model: str, key: str) -> ChatOpenAI:
+_KEYS = [k for k in [
+    os.getenv("OPENROUTER_API_KEY"),
+    os.getenv("OPENROUTER_API_KEY_2"),
+    os.getenv("OPENROUTER_API_KEY_3"),
+] if k]
+
+_CANDIDATES: list[tuple[str, str]] = [
+    (model, key)
+    for model in _MODELS
+    for key in _KEYS
+]
+
+_current_idx = 0   # module-level sticky index — advances forward only
+
+
+def _make_llm(model: str, key: str) -> ChatOpenAI:
     return ChatOpenAI(
         model=model,
         openai_api_key=key,
         openai_api_base="https://openrouter.ai/api/v1",
     )
 
-def make_llm_with_key_fallback(model: str) -> ChatOpenAI:
-    keys = [k for k in [
-        os.getenv("OPENROUTER_API_KEY"),
-        os.getenv("OPENROUTER_API_KEY_2"),
-        os.getenv("OPENROUTER_API_KEY_3"),
-    ] if k]
-    llms = [make_llm(model, key) for key in keys]
-    primary, *fallbacks = llms
-    return primary.with_fallbacks(fallbacks, exceptions_to_handle=(RateLimitError,))
 
-primary, *fallbacks = [make_llm_with_key_fallback(m) for m in FALLBACK_MODELS]
-llm = primary.with_fallbacks(fallbacks)
+def _make_agent(model: str, key: str):
+    return create_agent(
+        model=_make_llm(model, key),
+        tools=[
+            get_stock_history,
+            get_top_gainers,
+            python_analyzer,
+            send_email,
+            get_stock_news,
+        ],
+        system_prompt=get_system_prompt(),
+    )
 
-agent = create_agent(
-    model=llm,
-    tools=[
-        get_stock_history,
-        get_top_gainers,
-        python_analyzer,
-        send_email,
-        get_stock_news,
-    ],
-    system_prompt=get_system_prompt(),
-)
 
 def run_agent(history):
-    final_state = None
-    t = time.perf_counter()
-    for chunk in agent.stream(
-        {"messages": history},
-        config={"callbacks": [langfuse_handler]},
-        stream_mode="updates",
-    ):
-        elapsed = time.perf_counter() - t
-        node_name = list(chunk.keys())[0]
-        node_data = list(chunk.values())[0]
+    global _current_idx
 
-        if node_name == "tools":
-            for msg in node_data["messages"]:
-                print(f"[node: tools] → {msg.name} ({elapsed:.2f}s)")
-        else:
-            print(f"[node: {node_name}] ({elapsed:.2f}s)")
+    while _current_idx < len(_CANDIDATES):
+        model, key = _CANDIDATES[_current_idx]
+        agent = _make_agent(model, key)
 
-        final_state = chunk
-        t = time.perf_counter()
+        try:
+            final_state = None
+            t = time.perf_counter()
 
-    return next(iter(final_state.values()))["messages"]
+            for chunk in agent.stream(
+                {"messages": history},
+                config={"callbacks": [langfuse_handler]},
+                stream_mode="updates",
+            ):
+                elapsed = time.perf_counter() - t
+                node_name = list(chunk.keys())[0]
+                node_data = list(chunk.values())[0]
+
+                if node_name == "tools":
+                    for msg in node_data["messages"]:
+                        print(f"[node: tools] → {msg.name} ({elapsed:.2f}s)")
+                else:
+                    print(f"[node: {node_name}] ({elapsed:.2f}s)")
+
+                final_state = chunk
+                t = time.perf_counter()
+
+            return next(iter(final_state.values()))["messages"]
+
+        except RateLimitError as e:
+            print(f"Rate limited on {model} (key ...{key[-6:]}): {e}")
+            _current_idx += 1
+            if _current_idx >= len(_CANDIDATES):
+                print("All models and keys exhausted.")
+                raise
+            next_model, next_key = _CANDIDATES[_current_idx]
+            print(f"Switching to {next_model} (key ...{next_key[-6:]})\n")
 
 
 if __name__ == "__main__":

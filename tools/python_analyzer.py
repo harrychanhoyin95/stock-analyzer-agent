@@ -5,6 +5,9 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
+from pydantic import ValidationError
+from .validate import AnalyzerInput
+
 SANDBOX_IMAGE = "stock-analyzer-sandbox"
 TIMEOUT_SECONDS = 15
 MAX_OUTPUT_BYTES = 20_000
@@ -38,6 +41,18 @@ def python_analyzer(code: str, data: str = "") -> dict:
         '''
         data = '{"symbol": "AAPL", "data": {...}}'
     """
+    if data:
+        try:
+            parsed = json.loads(data)
+            if not isinstance(parsed, dict):
+                return {"error": "invalid input data: expected a JSON object"}
+            AnalyzerInput(**parsed)
+        except json.JSONDecodeError as e:
+            return {"error": f"invalid input data: {e}"}
+        except ValidationError as e:
+            messages = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
+            return {"error": "invalid input data: " + ", ".join(messages)}
+
     data_literal = json.dumps(data)
     run_script = f"data = {data_literal}\n\n{code}"
 

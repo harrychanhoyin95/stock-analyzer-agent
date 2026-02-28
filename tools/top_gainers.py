@@ -3,6 +3,10 @@ from datetime import datetime, timezone
 import yfinance as yf
 from langchain_core.tools import tool
 
+from ._playwright_scraper import scrape_top_gainer, use_scraper
+from pydantic import ValidationError
+from .validate import TopGainerResult
+
 _NASDAQ_EXCHANGES = {"NMS", "NGM", "NCM"}
 
 
@@ -13,19 +17,20 @@ def get_top_gainers() -> dict:
     Use this tool when you need to find the best performing NASDAQ stock today.
     Queries Yahoo Finance screener filtered to NASDAQ exchanges (NMS, NGM, NCM),
     then re-filters client-side to guard against server-side leakage.
+    Falls back to Playwright scraping (Futunn) if yfinance fails or USE_SCRAPER=1.
 
     Returns:
         Dictionary with timestamp and the top gainer's data including symbol,
         name, exchange, price, change, change_pct, volume, market_cap.
         Returns {'error': message} if the query fails or no NASDAQ gainers found.
     """
+    if use_scraper():
+        return scrape_top_gainer()
+
     try:
         query = yf.EquityQuery("and", [
             yf.EquityQuery("is-in", ["exchange", "NMS", "NGM", "NCM"]),
             yf.EquityQuery("gte", ["percentchange", 3]),
-            yf.EquityQuery("gte", ["intradaymarketcap", 2_000_000_000]),
-            yf.EquityQuery("gte", ["intradayprice", 5]),
-            yf.EquityQuery("gte", ["dayvolume", 15_000]),
         ])
         response = yf.screen(
             query,
@@ -33,12 +38,12 @@ def get_top_gainers() -> dict:
             sortAsc=False,
             size=250,
         )
-    except Exception as e:
-        return {"error": f"Failed to query Yahoo Finance screener: {str(e)}"}
+    except Exception:
+        return scrape_top_gainer()
 
     quotes = response.get("quotes", [])
     if not quotes:
-        return {"error": "No results returned from screener"}
+        return scrape_top_gainer()
 
     # Client-side filter: guard against server-side leakage (yfinance issue #2218)
     # Also exclude warrants (W), rights (R), units (U) — quoteType check alone isn't always reliable
@@ -50,12 +55,12 @@ def get_top_gainers() -> dict:
     ]
 
     if not nasdaq_quotes:
-        return {"error": "No NASDAQ stocks found in screener results"}
+        return scrape_top_gainer()
 
     # Already sorted by percentchange descending — take the top one
     top = nasdaq_quotes[0]
 
-    return {
+    result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "symbol": top.get("symbol"),
         "name": top.get("longName") or top.get("shortName"),
@@ -66,3 +71,9 @@ def get_top_gainers() -> dict:
         "volume": top.get("regularMarketVolume"),
         "market_cap": top.get("marketCap"),
     }
+    try:
+        TopGainerResult(**result)
+        return result
+    except ValidationError as e:
+        messages = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
+        return {"error": "validation failed: " + ", ".join(messages)}
