@@ -59,22 +59,28 @@ agent = create_agent(
 )
 
 if __name__ == "__main__":
-    print("Chat ready. Type 'exit' to quit.\n")
-    history = []
-    while True:
-        try:
-            user_input = input("You: ")
-        except KeyboardInterrupt:
-            print("\nBye!")
-            break
-        if user_input.lower() in ["exit", "quit", "q"]:
-            break
-        
-        history.append(("human", user_input))
+    print("Running daily NASDAQ analysis...\n")
 
+    history = [("human", "Run the daily analysis.")]
+
+    response = agent.invoke(
+        {"messages": history},
+        config={"callbacks": [langfuse_handler]},
+    )
+    history = response["messages"]
+    print(f"\n{history[-1].content}\n")
+
+    try:
+        email = input("Your email: ").strip()
+    except KeyboardInterrupt:
+        print("\nBye!")
+        raise SystemExit(0)
+
+    if email:
+        history.append(("human", email))
         response = agent.invoke(
-                {"messages": history},
-                config={"callbacks": [langfuse_handler]},
-            )
+            {"messages": history},
+            config={"callbacks": [langfuse_handler]},
+        )
         history = response["messages"]
-        print(f"\nAssistant: {history[-1].content}\n")
+        print(f"\n{history[-1].content}\n")
