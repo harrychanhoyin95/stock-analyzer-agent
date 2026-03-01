@@ -1,4 +1,5 @@
 from typing import Literal
+import logging
 
 import yfinance as yf
 from langchain_core.tools import tool
@@ -7,6 +8,8 @@ from ._playwright_scraper import scrape_stock_history, use_scraper
 from pydantic import ValidationError
 
 from .validate import StockHistoryResult
+
+_logger = logging.getLogger(__name__)
 
 
 @tool
@@ -36,6 +39,7 @@ def get_stock_history(
         df = ticker.history(period=period)
 
         if df.empty:
+            _logger.info("yfinance returned empty DataFrame for %s, falling back to scraper", symbol)
             return scrape_stock_history(symbol, period)
 
         data = {}
@@ -57,5 +61,6 @@ def get_stock_history(
             messages = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
             return {"error": "validation failed: " + ", ".join(messages)}
 
-    except Exception:
+    except Exception as e:
+        _logger.warning("yfinance failed for %s, falling back to scraper: %s", symbol, e)
         return scrape_stock_history(symbol, period)

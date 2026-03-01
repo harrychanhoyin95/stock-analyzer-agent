@@ -72,6 +72,20 @@ class TestGetStockNewsUnit:
 
         mock_scraper.assert_called_once_with("AAPL")
 
+    def test_news_item_with_empty_content_returns_none_fields(self, mocker):
+        mock_ticker = mocker.patch("tools.stock_news.yf.Ticker")
+        mock_ticker.return_value.news = [{"content": {}}]
+
+        result = get_stock_news.invoke({"ticker": "AAPL"})
+
+        assert "error" not in result
+        assert len(result["news"]) == 1
+        item = result["news"][0]
+        assert item["title"] is None
+        assert item["publisher"] is None
+        assert item["published_at"] is None
+        assert item["url"] is None
+
     def test_use_scraper_env_bypasses_yfinance(self, mocker, monkeypatch):
         monkeypatch.setenv("USE_SCRAPER", "1")
 

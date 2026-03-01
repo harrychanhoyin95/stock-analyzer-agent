@@ -24,6 +24,7 @@ from tools import (
 load_dotenv()
 
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
+DEFAULT_RECIPIENT = "harrychanhoyin95@gmail.com"
 
 def check_langfuse_health():
     """Check if LangFuse is running before starting the app."""
@@ -91,7 +92,7 @@ _VALID_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y"}
 @dataclass
 class Config:
     period: str = "5d"
-    recipients: list[str] = field(default_factory=lambda: ["harrychanhoyin95@gmail.com"])
+    recipients: list[str] = field(default_factory=lambda: [DEFAULT_RECIPIENT])
 
 
 def _parse_config() -> Config:
@@ -103,10 +104,10 @@ def _parse_config() -> Config:
         choices=sorted(_VALID_PERIODS),
         help="History period (default: 5d). One of: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y",
     )
-    parser.add_argument("--email", type=str, default=None, help="Comma-separated recipient emails (default: harrychanhoyin95@gmail.com)")
+    parser.add_argument("--email", type=str, default=None, help=f"Comma-separated recipient emails (default: {DEFAULT_RECIPIENT})")
     args = parser.parse_args()
 
-    recipients = args.email.split(",") if args.email else ["harrychanhoyin95@gmail.com"]
+    recipients = args.email.split(",") if args.email else [DEFAULT_RECIPIENT]
     return Config(period=args.period, recipients=recipients)
 
 
@@ -157,13 +158,15 @@ def run_agent(history, config: Config):
             return next(iter(final_state.values()))["messages"]
 
         except RateLimitError as e:
-            print(f"Rate limited on {model} (key ...{key[-6:]}): {e}")
+            key_hint = key[-4:] if len(key) >= 4 else "****"
+            print(f"Rate limited on {model} (key ...{key_hint}): {e}")
             _current_idx += 1
             if _current_idx >= len(_CANDIDATES):
                 print("All models and keys exhausted.")
                 raise
             next_model, next_key = _CANDIDATES[_current_idx]
-            print(f"Switching to {next_model} (key ...{next_key[-6:]})\n")
+            next_key_hint = next_key[-4:] if len(next_key) >= 4 else "****"
+            print(f"Switching to {next_model} (key ...{next_key_hint})\n")
 
 
 if __name__ == "__main__":

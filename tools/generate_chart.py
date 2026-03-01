@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 
 import matplotlib
@@ -41,11 +42,11 @@ def generate_chart(data: str, chart_type: str, title: str) -> dict:
     if not dates:
         return {"error": "no data points found"}
 
-    try:
-        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        chart_path = tmp.name
-        tmp.close()
+    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    chart_path = tmp.name
+    tmp.close()
 
+    try:
         if chart_type == "line":
             closes = [ohlcv[d]["close"] for d in dates]
 
@@ -79,11 +80,16 @@ def generate_chart(data: str, chart_type: str, title: str) -> dict:
                 style="yahoo",
                 figsize=(10, 5),
             )
+            plt.close("all")
 
         else:
+            if os.path.exists(chart_path):
+                os.unlink(chart_path)
             return {"error": f"unknown chart_type '{chart_type}': use 'line' or 'candlestick'"}
 
     except Exception as e:
+        if os.path.exists(chart_path):
+            os.unlink(chart_path)
         return {"error": f"chart generation failed: {e}"}
 
     return {"chart_path": chart_path}

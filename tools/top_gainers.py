@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 
 import yfinance as yf
 from langchain_core.tools import tool
@@ -8,6 +9,7 @@ from pydantic import ValidationError
 from .validate import TopGainerResult
 
 _NASDAQ_EXCHANGES = {"NMS", "NGM", "NCM"}
+_logger = logging.getLogger(__name__)
 
 
 @tool
@@ -38,11 +40,13 @@ def get_top_gainers() -> dict:
             sortAsc=False,
             size=250,
         )
-    except Exception:
+    except Exception as e:
+        _logger.warning("yfinance query failed, falling back to scraper: %s", e)
         return scrape_top_gainer()
 
     quotes = response.get("quotes", [])
     if not quotes:
+        _logger.info("yfinance returned no quotes, falling back to scraper")
         return scrape_top_gainer()
 
     # Client-side filter: guard against server-side leakage (yfinance issue #2218)
@@ -55,6 +59,7 @@ def get_top_gainers() -> dict:
     ]
 
     if not nasdaq_quotes:
+        _logger.info("No NASDAQ equities found after filtering, falling back to scraper")
         return scrape_top_gainer()
 
     # Already sorted by percentchange descending — take the top one

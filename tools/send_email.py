@@ -39,10 +39,11 @@ def send_email(to: str, subject: str, body: str, chart_path: str = "") -> dict:
         Dict with 'result' on success or 'error' on failure.
     """
 
-    sender = os.getenv("GMAIL_SENDER")
-    password = os.getenv("GMAIL_APP_PASSWORD")
-    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    smtp_port = os.getenv("SMTP_PORT", 465)
+    sender: str | None = os.getenv("GMAIL_SENDER")
+    password: str | None = os.getenv("GMAIL_APP_PASSWORD")
+    smtp_host: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port_str: str = os.getenv("SMTP_PORT", "465")
+    smtp_port: int = int(smtp_port_str)
 
     if not sender or not password:
         missing = []

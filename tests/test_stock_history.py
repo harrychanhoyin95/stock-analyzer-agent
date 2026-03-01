@@ -59,6 +59,41 @@ class TestGetStockHistoryUnit:
 
         mock_scraper.assert_called_once()
 
+    def test_nan_volume_in_dataframe_falls_back_to_scraper(self, mocker):
+        import numpy as np
+
+        index = pd.to_datetime(["2025-01-01"])
+        df = pd.DataFrame(
+            {"Open": [150.0], "High": [155.0], "Low": [149.0], "Close": [153.0], "Volume": [float("nan")]},
+            index=index,
+        )
+        mock_ticker = mocker.patch("tools.stock_history.yf.Ticker")
+        mock_ticker.return_value.history.return_value = df
+
+        mock_scraper = mocker.patch(
+            "tools.stock_history.scrape_stock_history",
+            return_value={"error": "scraper called"},
+        )
+
+        result = get_stock_history.invoke({"symbol": "AAPL", "period": "5d"})
+
+        mock_scraper.assert_called_once()
+        assert result == {"error": "scraper called"}
+
+    def test_network_timeout_falls_back_to_scraper(self, mocker):
+        mock_ticker = mocker.patch("tools.stock_history.yf.Ticker")
+        mock_ticker.return_value.history.side_effect = TimeoutError("connection timed out")
+
+        mock_scraper = mocker.patch(
+            "tools.stock_history.scrape_stock_history",
+            return_value={"error": "scraper called"},
+        )
+
+        result = get_stock_history.invoke({"symbol": "AAPL", "period": "5d"})
+
+        mock_scraper.assert_called_once()
+        assert result == {"error": "scraper called"}
+
     def test_use_scraper_env_bypasses_yfinance(self, mocker, monkeypatch):
         monkeypatch.setenv("USE_SCRAPER", "1")
 

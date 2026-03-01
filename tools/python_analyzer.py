@@ -53,8 +53,7 @@ def python_analyzer(code: str, data: str = "") -> dict:
             messages = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
             return {"error": "invalid input data: " + ", ".join(messages)}
 
-    data_literal = json.dumps(data)
-    run_script = f"data = {data_literal}\n\n{code}"
+    run_script = f"data = {data if data else 'None'}\n\n{code}"
 
     with tempfile.TemporaryDirectory() as tmpdir:
         script_path = Path(tmpdir) / "run.py"

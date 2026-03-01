@@ -70,28 +70,23 @@ def scrape_top_gainer() -> dict:
     """
     url = "https://www.futunn.com/en/quote/us/stock-list/nasdaq/top-gainers"
 
+    browser = None
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-            # Wait until at least one percentage appears — signals table is rendered
             page.wait_for_function(
                 "document.body.innerText.includes('%')", timeout=20000
             )
 
             rows = page.query_selector_all("table tbody tr")
             if not rows:
-                browser.close()
                 return {"error": "Futunn: no rows found in gainers table"}
 
-            # First row is the #1 gainer
-            # Column order: No | Symbol | Name | Price | Chg | %Chg | Volume |
-            #               Turnover | Market Cap | Float Cap | ...
             cells = rows[0].query_selector_all("td")
             if len(cells) < 9:
-                browser.close()
                 return {"error": f"Futunn: unexpected column count ({len(cells)})"}
 
             symbol = cells[1].inner_text().strip()
@@ -103,22 +98,23 @@ def scrape_top_gainer() -> dict:
             volume = _parse_number(volume_raw)
             market_cap = _parse_number(cells[8].inner_text())
 
-            browser.close()
-
-        return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "symbol": symbol,
-            "name": name,
-            "exchange": "NASDAQ",
-            "price": price,
-            "change_absolute": change_absolute,
-            "change_pct": change_pct,
-            "volume": int(volume) if volume is not None else None,
-            "market_cap": market_cap,
-        }
+            return {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "symbol": symbol,
+                "name": name,
+                "exchange": "NASDAQ",
+                "price": price,
+                "change_absolute": change_absolute,
+                "change_pct": change_pct,
+                "volume": int(volume) if volume is not None else None,
+                "market_cap": market_cap,
+            }
 
     except Exception as e:
         return {"error": f"Futunn scraper failed: {str(e)}"}
+    finally:
+        if browser:
+            browser.close()
 
 
 def scrape_stock_history(symbol: str, period: str) -> dict:
@@ -126,13 +122,13 @@ def scrape_stock_history(symbol: str, period: str) -> dict:
 
     Returns the same dict shape as get_stock_history().
     """
-    # period1=0 and a far-future epoch loads the full available history
     url = (
         f"https://finance.yahoo.com/quote/{symbol.upper()}/history/"
         "?period1=0&period2=9999999999"
     )
     n_rows = _PERIOD_ROWS.get(period, 5)
 
+    browser = None
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -141,18 +137,15 @@ def scrape_stock_history(symbol: str, period: str) -> dict:
 
             table = page.query_selector("table")
             if not table:
-                browser.close()
                 return {"error": f"Yahoo Finance history: no table found for {symbol}"}
 
             rows = table.query_selector_all("tbody tr")
             if not rows:
-                browser.close()
                 return {"error": f"Yahoo Finance history: no rows for {symbol}"}
 
             data = {}
             for row in rows[:n_rows]:
                 cells = row.query_selector_all("td")
-                # Rows with fewer than 7 cells are dividend/split events — skip them
                 if len(cells) < 7:
                     continue
 
@@ -164,8 +157,6 @@ def scrape_stock_history(symbol: str, period: str) -> dict:
                 except ValueError:
                     continue
 
-                # Columns: Date | Open | High | Low | Close | Adj Close | Volume
-                # Values arrive as plain strings like '272.81' and '72,239,400'
                 open_ = _parse_number(cells[1].inner_text())
                 high = _parse_number(cells[2].inner_text())
                 low = _parse_number(cells[3].inner_text())
@@ -183,15 +174,16 @@ def scrape_stock_history(symbol: str, period: str) -> dict:
                     "volume": int(volume_raw),
                 }
 
-            browser.close()
+            if not data:
+                return {"error": f"Yahoo Finance history: no parseable rows for {symbol}"}
 
-        if not data:
-            return {"error": f"Yahoo Finance history: no parseable rows for {symbol}"}
-
-        return {"symbol": symbol.upper(), "period": period, "data": data}
+            return {"symbol": symbol.upper(), "period": period, "data": data}
 
     except Exception as e:
         return {"error": f"Yahoo Finance history scraper failed: {str(e)}"}
+    finally:
+        if browser:
+            browser.close()
 
 
 def scrape_stock_news(symbol: str) -> dict:
@@ -201,32 +193,27 @@ def scrape_stock_news(symbol: str) -> dict:
     """
     url = f"https://finance.yahoo.com/quote/{symbol.upper()}/news/"
 
+    browser = None
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             page.goto(url, wait_until="networkidle", timeout=30000)
 
-            # News items are <li> elements containing an <a> with the article link
-            # and an <h3> with the title. Publisher and date are in separate spans.
-            # Wait for at least one headline to appear
             page.wait_for_selector("li h3", timeout=15000)
 
             items = page.query_selector_all("li:has(h3)")
             if not items:
-                browser.close()
                 return {"error": f"Yahoo Finance news: no items found for {symbol}"}
 
             news = []
             for item in items[:10]:
                 h3 = item.query_selector("h3")
                 anchor = item.query_selector("a[href]")
-                # div.publishing contains "Publisher • 2h ago"
                 publishing = item.query_selector("div.publishing")
 
                 title = h3.inner_text().strip() if h3 else None
                 link = anchor.get_attribute("href") if anchor else None
-                # Make relative URLs absolute
                 if link and link.startswith("/"):
                     link = "https://finance.yahoo.com" + link
 
@@ -245,16 +232,17 @@ def scrape_stock_news(symbol: str) -> dict:
                         "url": link,
                     })
 
-            browser.close()
+            if not news:
+                return {"error": f"Yahoo Finance news: no parseable items for {symbol}"}
 
-        if not news:
-            return {"error": f"Yahoo Finance news: no parseable items for {symbol}"}
-
-        return {
-            "symbol": symbol.upper(),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "news": news,
-        }
+            return {
+                "symbol": symbol.upper(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "news": news,
+            }
 
     except Exception as e:
         return {"error": f"Yahoo Finance news scraper failed: {str(e)}"}
+    finally:
+        if browser:
+            browser.close()
