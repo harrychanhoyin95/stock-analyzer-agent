@@ -25,8 +25,8 @@ def python_analyzer(code: str, data: str = "") -> dict:
     Args:
         code: Python code to execute. pandas (pd) and numpy (np) are available.
               Must use print() to produce any output.
-        data: Optional JSON string from other tools, available as 'data' variable.
-              Use json.loads(data) inside your code to parse it.
+        data: Optional JSON string from other tools. Inside your code, use the
+              pre-parsed variable `data_obj` (a dict) — do NOT call json.loads().
 
     Returns:
         Dict with 'result' (stdout output) or 'error' if execution failed.
@@ -34,12 +34,11 @@ def python_analyzer(code: str, data: str = "") -> dict:
 
     Example:
         code = '''
-        import json
-        stock = json.loads(data)
-        prices = [d["close"] for d in stock["data"].values()]
+        stock = data_obj["stock"]["data"]
+        prices = [d["close"] for d in stock.values()]
         print(f"Average: {sum(prices)/len(prices):.2f}")
         '''
-        data = '{"symbol": "AAPL", "data": {...}}'
+        data = '{"stock": {"symbol": "AAPL", "data": {...}}, "spy": {...}}'
     """
     if data:
         try:
@@ -53,7 +52,9 @@ def python_analyzer(code: str, data: str = "") -> dict:
             messages = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
             return {"error": "invalid input data: " + ", ".join(messages)}
 
-    run_script = f"data = {data if data else 'None'}\n\n{code}"
+    _data_json = json.dumps(data) if data else 'None'
+    _data_obj = json.loads(data) if data else {}
+    run_script = f"data = {_data_json}\ndata_obj = {_data_obj}\n\n{code}"
 
     with tempfile.TemporaryDirectory() as tmpdir:
         script_path = Path(tmpdir) / "run.py"

@@ -51,7 +51,8 @@ When given the task to run the analysis, follow these steps in order without ask
      }}
    }}
 
-   Access price data like: stock_data = data["stock"]["data"], then iterate over its date keys.
+   Access price data like: stock_data = data_obj["stock"]["data"], then iterate over its date keys.
+   Do NOT call json.loads() — use data_obj directly. It is already a parsed dict.
    Do NOT access keys like "exchange", "name", "news", or "change_pct" — those do not exist in this payload.
 
    Compute from the stock data:
@@ -86,10 +87,10 @@ When given the task to run the analysis, follow these steps in order without ask
    - Annualized volatility vs SPY annualized volatility
    - Performance vs S&P 500: stock return vs SPY return, and the spread
 
-7. After presenting the analysis, immediately call send_email with:
+7. ALWAYS call send_email as the final step. This is mandatory — do not skip it regardless of earlier results.
    - to: {recipients_str}
    - subject format: "[{today}] <SYMBOL> Daily Analysis"
-   - chart_path: the chart_path returned from step 5
+   - chart_path: the chart_path from step 5. If generate_chart returned an error, omit chart_path entirely.
    - body: the full analysis as an HTML string using these elements:
      - <h2> for section headers (Top Gainers, Price Action, Volume, News, vs S&P 500)
      - <table> with <th> and <td> for any tabular data (e.g. daily returns table)
@@ -97,4 +98,5 @@ When given the task to run the analysis, follow these steps in order without ask
      - <b> for key metric labels
      - <p> for analysis paragraphs
      - Inline CSS only — no <style> blocks
-   Do not ask for confirmation. Just send it."""
+
+CRITICAL RULE: You MUST call send_email as your final action. Do not end with a text response. Do not ask for confirmation. The analysis is not complete until send_email has been called."""
