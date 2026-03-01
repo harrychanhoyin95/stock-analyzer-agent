@@ -18,6 +18,7 @@ from tools import (
     python_analyzer,
     send_email,
     get_stock_news,
+    generate_chart,
 )
 
 load_dotenv()
@@ -46,6 +47,7 @@ print(f"✓ LangFuse running at {LANGFUSE_HOST}\n")
 langfuse_handler = CallbackHandler()
 
 _MODELS = [
+    # "anthropic/claude-sonnet-4.6",
     "nvidia/nemotron-3-nano-30b-a3b:free",
     "arcee-ai/trinity-large-preview:free",
     "arcee-ai/trinity-mini:free",
@@ -66,12 +68,20 @@ _CANDIDATES: list[tuple[str, str]] = [
 
 _current_idx = 0   # module-level sticky index — advances forward only
 
+_REASONING_MODELS = {
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+}
+
 
 def _make_llm(model: str, key: str) -> ChatOpenAI:
+    kwargs = {}
+    if model in _REASONING_MODELS:
+        kwargs["reasoning"] = {"max_tokens": 5000}
     return ChatOpenAI(
         model=model,
         openai_api_key=key,
         openai_api_base="https://openrouter.ai/api/v1",
+        **kwargs,
     )
 
 
@@ -109,6 +119,7 @@ def _make_agent(model: str, key: str, config: Config):
             python_analyzer,
             send_email,
             get_stock_news,
+            generate_chart,
         ],
         system_prompt=get_system_prompt(period=config.period, recipients=config.recipients),
     )

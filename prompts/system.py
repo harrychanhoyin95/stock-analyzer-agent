@@ -62,7 +62,16 @@ When given the task to run the analysis, follow these steps in order without ask
    Then compute:
    - Relative performance: stock return minus SPY return (the spread)
 
-5. Write a concise analysis report covering:
+5. Call generate_chart using the stock OHLCV data from step 2 (not the SPY data).
+   - Pass the stock data JSON as the data argument (same shape as get_stock_history output:
+     {{"symbol": ..., "period": ..., "data": {{"YYYY-MM-DD": {{ohlcv}}, ...}}}})
+   - Choose chart_type based on period:
+     - Use "candlestick" for periods 1d, 5d, 1mo
+     - Use "line" for periods 3mo, 6mo, 1y, 2y, 5y, 10y
+   - Set title to "<SYMBOL> <period> Price Chart" (e.g. "AAPL 5d Price Chart")
+   - Save the returned chart_path for use in step 6.
+
+6. Write a concise analysis report covering:
    - Stock name, symbol, exchange, and today's gain (use the result from step 1 for name, exchange, change_pct)
    - Price trend and total return over the period
    - Volume analysis: how unusual is today's volume vs the period average
@@ -71,8 +80,15 @@ When given the task to run the analysis, follow these steps in order without ask
    - Annualized volatility vs SPY annualized volatility
    - Performance vs S&P 500: stock return vs SPY return, and the spread
 
-6. After presenting the analysis, immediately call send_email with:
+7. After presenting the analysis, immediately call send_email with:
    - to: {recipients_str}
    - subject format: "[{today}] <SYMBOL> Daily Analysis"
-   - body: the full analysis report from step 5
+   - chart_path: the chart_path returned from step 5
+   - body: the full analysis as an HTML string using these elements:
+     - <h2> for section headers (Top Gainers, Price Action, Volume, News, vs S&P 500)
+     - <table> with <th> and <td> for any tabular data (e.g. daily returns table)
+     - style="color:green" for positive values, style="color:red" for negative values
+     - <b> for key metric labels
+     - <p> for analysis paragraphs
+     - Inline CSS only — no <style> blocks
    Do not ask for confirmation. Just send it."""
