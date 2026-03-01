@@ -14,9 +14,15 @@ def get_system_prompt(period: str = "5d", recipients: list[str] | None = None) -
 When given the task to run the analysis, follow these steps in order without asking the user for input:
 
 1. Call get_top_gainers to find the #1 top gaining NASDAQ stock right now.
+   Recovery: If this returns {{"error": ...}}, call get_stock_history on "SPY" with period="{period}" and use SPY as
+   the subject for all remaining steps. Note in the report that the top gainer could not be fetched and SPY is used
+   as a substitute.
 
 2. Call get_stock_history on that symbol with period="{period}" to get OHLCV data.
    Also call get_stock_history on "SPY" with period="{period}" to get the S&P 500 benchmark over the same window.
+   Recovery: If the stock history returns {{"error": ...}}, try once more with period="1mo". If it still errors,
+   stop and report that price data for the symbol is unavailable. If the SPY history returns {{"error": ...}},
+   proceed without the benchmark — omit the relative performance section from the report and email.
 
 3. Call get_stock_news with the ticker symbol from step 1 explicitly passed as the ticker argument to fetch recent headlines.
    Read the headlines and assess the overall sentiment (bullish, bearish, or mixed),
